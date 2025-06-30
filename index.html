@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>语音学感知实验 - Identification</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#4361ee',
+            secondary: '#f72585',
+            neutral: '#f8f9fa',
+          },
+          fontFamily: {
+            sans: ['PingFang SC', 'Microsoft YaHei', 'sans-serif'],
+          },
+        },
+      }
+    }
+  </script>
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto {
+        content-visibility: auto;
+      }
+      .audio-shadow {
+        box-shadow: 0 10px 15px -3px rgba(67, 97, 238, 0.1), 0 4px 6px -2px rgba(67, 97, 238, 0.05);
+      }
+      .btn-hover {
+        transition: all 0.3s ease;
+      }
+      .btn-hover:hover {
+        transform: translateY(-2px);
+      }
+    }
+  </style>
+</head>
+<body class="bg-neutral min-h-screen font-sans text-gray-800">
+  <div class="max-w-3xl mx-auto px-4 py-8">
+    <!-- 欢迎页面 -->
+    <div id="welcome-page" class="bg-white rounded-2xl shadow-lg p-6 md:p-8 transition-all duration-300">
+      <h1 class="text-[clamp(1.5rem,3vw,2rem)] font-bold text-primary mb-4 text-center">语音感知实验</h1>
+      <p class="text-gray-600 mb-6 leading-relaxed">
+        感谢您参与本次语音学感知实验。您将听到186段不同的语音，并从选项中选择您听到的内容。每段语音将随机重复3次，每次播放后请做出选择。
+      </p>
+      <div class="bg-blue-50 p-4 rounded-lg mb-6">
+        <h3 class="font-medium text-primary mb-2"><i class="fa fa-info-circle mr-2"></i> 实验须知</h3>
+        <ul class="list-disc pl-5 text-sm text-gray-700">
+          <li>请使用耳机以获得最佳体验</li>
+          <li>实验过程中请保持环境安静</li>
+          <li>您的选择不会立即显示正确与否</li>
+          <li>实验数据将被匿名收集用于研究</li>
+        </ul>
+      </div>
+      
+      <!-- 被试编号收集 -->
+      <div id="participant-info" class="mb-6">
+        <h3 class="text-lg font-medium mb-4">请输入您的实验编号</h3>
+        <div class="grid grid-cols-1 gap-4">
+          <div>
+            <label for="participant-id" class="block text-sm font-medium text-gray-700 mb-1">实验编号 <span class="text-red-500">*</span></label>
+            <input type="text" id="participant-id" class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-primary focus:border-primary" placeholder="请输入您的唯一实验编号" required>
+            <p class="text-xs text-gray-500 mt-1">此编号由实验组织者分配，请确保输入正确</p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="flex justify-center">
+        <button id="start-btn" class="bg-primary hover:bg-primary/90 text-white font-medium py-3 px-8 rounded-xl shadow-md btn-hover flex items-center">
+          <i class="fa fa-play mr-2"></i> 开始实验
+        </button>
+      </div>
+    </div>
+
+    <!-- 实验页面 -->
+    <div id="experiment-page" class="hidden bg-white rounded-2xl shadow-lg p-6 md:p-8 transition-all duration-300">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-xl md:text-2xl font-bold text-primary">语音辨认测试</h2>
+        <div class="text-sm text-gray-500">
+          <span id="trial-count">1</span> / 558 次
+        </div>
+      </div>
+      
+      <div class="bg-neutral p-6 md:p-8 rounded-xl mb-8 text-center">
+        <div id="audio-section" class="max-w-md mx-auto audio-shadow bg-white p-6 rounded-xl mb-8">
+          <h3 class="text-lg font-medium mb-4">请听取以下语音</h3>
+          <button id="play-audio" class="bg-secondary hover:bg-secondary/90 text-white font-medium py-3 px-6 rounded-lg btn-hover w-full flex items-center justify-center">
+            <i class="fa fa-volume-up mr-2"></i> 播放语音
+          </button>
+          <div id="audio-loading" class="hidden mt-3 text-sm text-gray-500">
+            <i class="fa fa-spinner fa-spin mr-1"></i> 加载音频中...
+          </div>
+          <audio id="voice-audio" preload="metadata"></audio>
+        </div>
+        
+        <div id="response-section" class="hidden">
+          <h3 class="text-lg font-medium mb-4">您听到了什么？</h3>
+          <div id="response-options" class="grid grid-cols-2 gap-3 max-w-md mx-auto">
+            <!-- 选项将通过JS动态生成 -->
+          </div>
+        </div>
+      </div>
+      
+      <div class="flex justify-between items-center">
+        <button id="prev-btn" class="hidden bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg transition-colors">
+          <i class="fa fa-arrow-left mr-1"></i> 上一次
+        </button>
+        <!-- 移除“下一次”按钮 -->
+      </div>
+    </div>
+
+    <!-- 完成页面 -->
+    <div id="completion-page" class="hidden bg-white rounded-2xl shadow-lg p-6 md:p-8 transition-all duration-300 text-center">
+      <div class="mb-6">
+        <i class="fa fa-check-circle text-4xl text-primary mb-3"></i>
+        <h2 class="text-xl md:text-2xl font-bold text-gray-800 mb-2">实验完成！</h2>
+        <p class="text-gray-600">感谢您完成本次语音感知实验</p>
+      </div>
+      
+      <div class="bg-neutral p-5 rounded-lg mb-8 max-w-md mx-auto">
+        <h3 class="font-medium mb-3">实验已提交</h3>
+        <p class="text-sm text-gray-600">您的数据已成功提交，感谢您的参与。</p>
+      </div>
+      
+      <div class="flex flex-col sm:flex-row justify-center gap-3">
+        <button id="restart-btn" class="bg-primary hover:bg-primary/90 text-white font-medium py-3 px-6 rounded-lg shadow-sm btn-hover flex items-center justify-center">
+          <i class="fa fa-refresh mr-1"></i> 重新实验
+        </button>
+        <button id="export-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-3 px-6 rounded-lg shadow-sm btn-hover flex items-center justify-center">
+          <i class="fa fa-download mr-1"></i> 下载数据
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="mt-12 text-center text-gray-500 text-sm pb-6">
+    <p>语音学实验 | Identification版本</p>
+  </footer>
+
+  <script>
+    // 实验配置
+    const config = {
+      submitApi: 'https://your-server.com/api/submit-experiment', // 需替换为实际API地址
+      autoSubmit: true, // 是否自动提交数据
+      idValidation: /^[a-zA-Z0-9_-]{3,20}$/ // 编号验证正则表达式
+    };
+      // 初始化实验结果数组
+      const experimentResults = [];
+
+    // 实验数据 - 扩展到186种不同的语音样本
+const experimentData = {
+    // 语音刺激配置（音频文件位于HTML同级目录的audio文件夹中）
+    stimuli: [
+        {
+            id: 1,
+            name: "样本1",
+            audio: 'audio/pi1.wav',
+            options: ['披', '偏'],
+            correct: '披'
+        },
+        {
+            id: 2,
+            name: "样本2",
+            audio: 'audio/pi1.wav',
+            options: ['披', '篇'],
+            correct: '披'
+        },
+        {
+            id: 3,
+            name: "样本3",
+            audio: 'audio/pe1.wav',
+            options: ['披', '偏'],
+            correct: '偏'
+        },
+        {
+            id: 4,
+            name: "样本4",
+            audio: 'audio/pe1.wav',
+            options: ['披', '篇'],
+            correct: '篇'
+        },
+        {
+            id: 5,
+            name: "样本5",
+            audio: 'audio/pi2.wav',
+            options: ['屁', '片'],
+            correct: '屁'
+        },
+        {
+            id: 6,
+            name: "样本6",
+            audio: 'audio/pi2.wav',
+            options: ['屁', '骗'],
+            correct: '屁'
+        },
+        {
+            id: 7,
+            name: "样本7",
+            audio: 'audio/pe2.wav',
+            options: ['屁', '片'],
+            correct: '片'
+        },
+        {
+            id: 8,
+            name: "样本8",
+            audio: 'audio/pe2.wav',
+            options: ['屁', '骗'],
+            correct: '骗'
+        },
+        {
+            id: 9,
+            name: "样本9",
+            audio: 'audio/bi1.wav',
+            options: ['篦', '边'],
+            correct: '篦'
+        },
+        {
+            id: 10,
+            name: "样本10",
+            audio: 'audio/bi1.wav',
+            options: ['篦', '煸'],
+            correct: '篦'
+        },
+        {
+            id: 11,
+            name: "样本11",
+            audio: 'audio/bi1.wav',
+            options: ['篦', '鞭'],
+            correct: '篦'
+        },
+        {
+            id: 12,
+            name: "样本12",
+            audio: 'audio/be1.wav',
+            options: ['篦', '边'],
+            correct: '边'
+        },
+        {
+            id: 13,
+            name: "样本13",
+            audio: 'audio/be1.wav',
+            options: ['篦', '煸'],
+            correct: '煸'
+        },
+        {
+            id: 14,
+            name: "样本14",
+            audio: 'audio/be1.wav',
+            options: ['篦', '鞭'],
+            correct: '鞭'
+        },
+        {
+            id: 15,
+            name: "样本15",
+            audio: 'audio/bi2.wav',
+            options: ['比', '变'],
+            correct: '比'
+        },
+        {
+            id: 16,
+            name: "样本16",
+            audio: 'audio/bi2.wav',
+            options: ['比', '扁'],
+            correct: '比'
+        },
+        {
+            id: 17,
+            name: "样本17",
+            audio: 'audio/bi2.wav',
+            options: ['比', '遍'],
+            correct: '比'
+        },
+        {
+            id: 18,
+            name: "样本18",
+            audio: 'audio/be2.wav',
+            options: ['比', '变'],
+            correct: '变'
+        },
+        {
+            id: 19,
+            name: "样本19",
+            audio: 'audio/be2.wav',
+            options: ['比', '扁'],
+            correct: '扁'
+        },
+        {
+            id: 20,
+            name: "样本20",
+            audio: 'audio/be2.wav',
+            options: ['比', '遍'],
+            correct: '遍'
+        },
+        {
+            id: 21,
+            name: "样本21",
+            audio: 'audio/bhi.wav',
+            options: ['皮', '便'],
+            correct: '皮'
+        },
+        {
+            id: 22,
+            name: "样本22",
+            audio: 'audio/bhi.wav',
+            options: ['皮', '辫'],
+            correct: '皮'
+        },
+        {
+            id: 23,
+            name: "样本23",
+            audio: 'audio/bhi.wav',
+            options: ['皮', '辩'],
+            correct: '皮'
+        },
+        {
+            id: 24,
+            name: "样本24",
+            audio: 'audio/bhi.wav',
+            options: ['皮', '辨'],
+            correct: '皮'
+        },
+        {
+            id: 25,
+            name: "样本25",
+            audio: 'audio/bhe.wav',
+            options: ['皮', '便'],
+            correct: '便'
+        },
+        {
+            id: 26,
+            name: "样本26",
+            audio: 'audio/bhe.wav',
+            options: ['皮', '辫'],
+            correct: '辫'
+        },
+        {
+            id: 27,
+            name: "样本27",
+            audio: 'audio/bhe.wav',
+            options: ['皮', '辨'],
+            correct: '辨'
+        },
+        {
+            id: 28,
+            name: "样本28",
+            audio: 'audio/bhe.wav',
+            options: ['皮', '辩'],
+            correct: '辩'
+        },
+        {
+            id: 29,
+            name: "样本29",
+            audio: 'audio/ti1.wav',
+            options: ['梯', '天'],
+            correct: '梯'
+        },
+        {
+            id: 30,
+            name: "样本30",
+            audio: 'audio/ti1.wav',
+            options: ['梯', '添'],
+            correct: '梯'
+        },
+        {
+            id: 31,
+            name: "样本31",
+            audio: 'audio/te1.wav',
+            options: ['梯', '添'],
+            correct: '添'
+        },
+        {
+            id: 32,
+            name: "样本32",
+            audio: 'audio/te1.wav',
+            options: ['梯', '天'],
+            correct: '天'
+        },
+        {
+            id: 33,
+            name: "样本33",
+            audio: 'audio/ti2.wav',
+            options: ['体', '舔'],
+            correct: '体'
+        },
+        {
+            id: 34,
+            name: "样本34",
+            audio: 'audio/te2.wav',
+            options: ['体', '舔'],
+            correct: '舔'
+        },
+        {
+            id: 35,
+            name: "样本35",
+            audio: 'audio/di1.wav',
+            options: ['低', '掂'],
+            correct: '低'
+        },
+        {
+            id: 36,
+            name: "样本36",
+            audio: 'audio/di1.wav',
+            options: ['低', '癫'],
+            correct: '低'
+        },
+        {
+            id: 37,
+            name: "样本37",
+            audio: 'audio/di1.wav',
+            options: ['低', '颠'],
+            correct: '颠'
+        },
+        {
+            id: 38,
+            name: "样本38",
+            audio: 'audio/de1.wav',
+            options: ['低', '掂'],
+            correct: '掂'
+        },
+        {
+            id: 39,
+            name: "样本39",
+            audio: 'audio/de1.wav',
+            options: ['低', '癫'],
+            correct: '癫'
+        },
+        {
+            id: 40,
+            name: "样本40",
+            audio: 'audio/de1.wav',
+            options: ['低', '颠'],
+            correct: '颠'
+        },
+        {
+            id: 41,
+            name: "样本41",
+            audio: 'audio/di2.wav',
+            options: ['底', '点'],
+            correct: '底'
+        },
+        {
+            id: 42,
+            name: "样本42",
+            audio: 'audio/di2.wav',
+            options: ['底', '典'],
+            correct: '底'
+        },
+        {
+            id: 43,
+            name: "样本43",
+            audio: 'audio/di2.wav',
+            options: ['底', '店'],
+            correct: '底'
+        },
+        {
+            id: 44,
+            name: "样本44",
+            audio: 'audio/de2.wav',
+            options: ['底', '点'],
+            correct: '点'
+        },
+        {
+            id: 45,
+            name: "样本45",
+            audio: 'audio/de2.wav',
+            options: ['底', '典'],
+            correct: '典'
+        },
+        {
+            id: 46,
+            name: "样本46",
+            audio: 'audio/de2.wav',
+            options: ['底', '店'],
+            correct: '店'
+        },
+        {
+            id: 47,
+            name: "样本47",
+            audio: 'audio/dhi.wav',
+            options: ['地', '甜'],
+            correct: '地'
+        },
+        {
+            id: 48,
+            name: "样本48",
+            audio: 'audio/dhi.wav',
+            options: ['地', '田'],
+            correct: '地'
+        },
+        {
+            id: 49,
+            name: "样本49",
+            audio: 'audio/dhi.wav',
+            options: ['地', '填'],
+            correct: '地'
+        },
+        {
+            id: 50,
+            name: "样本50",
+            audio: 'audio/dhi.wav',
+            options: ['地', '电'],
+            correct: '地'
+        },
+        {
+            id: 51,
+            name: "样本51",
+            audio: 'audio/dhi.wav',
+            options: ['地', '垫'],
+            correct: '地'
+        },
+        {
+            id: 52,
+            name: "样本52",
+            audio: 'audio/dhe.wav',
+            options: ['地', '甜'],
+            correct: '甜'
+        },
+        {
+            id: 53,
+            name: "样本53",
+            audio: 'audio/dhe.wav',
+            options: ['地', '田'],
+            correct: '田'
+        },
+        {
+            id: 54,
+            name: "样本54",
+            audio: 'audio/dhe.wav',
+            options: ['地', '填'],
+            correct: '填'
+        },
+        {
+            id: 55,
+            name: "样本55",
+            audio: 'audio/dhe.wav',
+            options: ['地', '电'],
+            correct: '电'
+        },
+        {
+            id: 56,
+            name: "样本56",
+            audio: 'audio/dhe.wav',
+            options: ['地', '垫'],
+            correct: '垫'
+        },
+        {
+            id: 57,
+            name: "样本57",
+            audio: 'audio/mi.wav',
+            options: ['米', '面'],
+            correct: '米'
+        },
+        {
+            id: 58,
+            name: "样本58",
+            audio: 'audio/mi.wav',
+            options: ['米', '棉'],
+            correct: '米'
+        },
+        {
+            id: 59,
+            name: "样本59",
+            audio: 'audio/mi.wav',
+            options: ['米', '免'],
+            correct: '米'
+        },
+        {
+            id: 60,
+            name: "样本60",
+            audio: 'audio/me.wav',
+            options: ['米', '面'],
+            correct: '面'
+        },
+        {
+            id: 61,
+            name: "样本61",
+            audio: 'audio/me.wav',
+            options: ['米', '棉'],
+            correct: '棉'
+        },
+        {
+            id: 62,
+            name: "样本62",
+            audio: 'audio/me.wav',
+            options: ['米', '免'],
+            correct: '免'
+        },
+        {
+            id: 63,
+            name: "样本63",
+            audio: 'audio/ni.wav',
+            options: ['泥', '年'],
+            correct: '泥'
+        },
+        {
+            id: 64,
+            name: "样本64",
+            audio: 'audio/ni.wav',
+            options: ['泥', '验'],
+            correct: '泥'
+        },
+        {
+            id: 65,
+            name: "样本65",
+            audio: 'audio/ni.wav',
+            options: ['泥', '砚'],
+            correct: '泥'
+        },
+        {
+            id: 66,
+            name: "样本66",
+            audio: 'audio/ne.wav',
+            options: ['泥', '年'],
+            correct: '年'
+        },
+        {
+            id: 67,
+            name: "样本67",
+            audio: 'audio/ne.wav',
+            options: ['泥', '验'],
+            correct: '验'
+        },
+        {
+            id: 68,
+            name: "样本68",
+            audio: 'audio/ne.wav',
+            options: ['泥', '砚'],
+            correct: '砚'
+        },
+        {
+            id: 69,
+            name: "样本69",
+            audio: 'audio/li.wav',
+            options: ['梨', '联'],
+            correct: '梨'
+        },
+        {
+            id: 70,
+            name: "样本70",
+            audio: 'audio/li.wav',
+            options: ['梨', '连'],
+            correct: '梨'
+        },
+        {
+            id: 71,
+            name: "样本71",
+            audio: 'audio/li.wav',
+            options: ['梨', '链'],
+            correct: '梨'
+        },
+        {
+            id: 72,
+            name: "样本72",
+            audio: 'audio/li.wav',
+            options: ['梨', '莲'],
+            correct: '梨'
+        },
+        {
+            id: 73,
+            name: "样本73",
+            audio: 'audio/li.wav',
+            options: ['梨', '练'],
+            correct: '梨'
+        },
+        {
+            id: 74,
+            name: "样本74",
+            audio: 'audio/li.wav',
+            options: ['梨', '炼'],
+            correct: '梨'
+        },
+        {
+            id: 75,
+            name: "样本75",
+            audio: 'audio/li.wav',
+            options: ['梨', '帘'],
+            correct: '梨'
+        },
+        {
+            id: 76,
+            name: "样本76",
+            audio: 'audio/li.wav',
+            options: ['梨', '镰'],
+            correct: '梨'
+        },
+        {
+            id: 77,
+            name: "样本77",
+            audio: 'audio/li.wav',
+            options: ['梨', '怜'],
+            correct: '梨'
+        },
+        {
+            id: 78,
+            name: "样本78",
+            audio: 'audio/le.wav',
+            options: ['梨', '联'],
+            correct: '联'
+        },
+        {
+            id: 79,
+            name: "样本79",
+            audio: 'audio/le.wav',
+            options: ['梨', '连'],
+            correct: '连'
+        },
+        {
+            id: 80,
+            name: "样本80",
+            audio: 'audio/le.wav',
+            options: ['梨', '链'],
+            correct: '链'
+        },
+        {
+            id: 81,
+            name: "样本81",
+            audio: 'audio/le.wav',
+            options: ['梨', '莲'],
+            correct: '莲'
+        },
+        {
+            id: 82,
+            name: "样本82",
+            audio: 'audio/le.wav',
+            options: ['梨', '练'],
+            correct: '练'
+        },
+        {
+            id: 83,
+            name: "样本83",
+            audio: 'audio/le.wav',
+            options: ['梨', '炼'],
+            correct: '炼'
+        },
+        {
+            id: 84,
+            name: "样本84",
+            audio: 'audio/le.wav',
+            options: ['梨', '帘'],
+            correct: '帘'
+        },
+        {
+            id: 85,
+            name: "样本85",
+            audio: 'audio/le.wav',
+            options: ['梨', '镰'],
+            correct: '镰'
+        },
+        {
+            id: 86,
+            name: "样本86",
+            audio: 'audio/le.wav',
+            options: ['梨', '怜'],
+            correct: '怜'
+        },
+        {
+            id: 87,
+            name: "样本87",
+            audio: 'audio/ji1.wav',
+            options: ['鸡', '坚'],
+            correct: '鸡'
+        },
+        {
+            id: 88,
+            name: "样本88",
+            audio: 'audio/ji1.wav',
+            options: ['鸡', '肩'],
+            correct: '鸡'
+        },
+        {
+            id: 89,
+            name: "样本89",
+            audio: 'audio/ji1.wav',
+            options: ['鸡', '煎'],
+            correct: '鸡'
+        },
+        {
+            id: 90,
+            name: "样本90",
+            audio: 'audio/ji1.wav',
+            options: ['鸡', '尖'],
+            correct: '鸡'
+        },
+        {
+            id: 91,
+            name: "样本91",
+            audio: 'audio/je1.wav',
+            options: ['鸡', '坚'],
+            correct: '坚'
+        },
+        {
+            id: 92,
+            name: "样本92",
+            audio: 'audio/je1.wav',
+            options: ['鸡', '肩'],
+            correct: '肩'
+        },
+        {
+            id: 93,
+            name: "样本93",
+            audio: 'audio/je1.wav',
+            options: ['鸡', '煎'],
+            correct: '煎'
+        },
+        {
+            id: 94,
+            name: "样本94",
+            audio: 'audio/je1.wav',
+            options: ['鸡', '尖'],
+            correct: '尖'
+        },
+        {
+            id: 95,
+            name: "样本95",
+            audio: 'audio/ji2.wav',
+            options: ['记', '箭'],
+            correct: '记'
+        },
+        {
+            id: 96,
+            name: "样本96",
+            audio: 'audio/ji2.wav',
+            options: ['记', '建'],
+            correct: '记'
+        },
+        {
+            id: 97,
+            name: "样本97",
+            audio: 'audio/ji2.wav',
+            options: ['记', '荐'],
+            correct: '记'
+        },
+        {
+            id: 98,
+            name: "样本98",
+            audio: 'audio/ji2.wav',
+            options: ['记', '剑'],
+            correct: '记'
+        },
+        {
+            id: 99,
+            name: "样本99",
+            audio: 'audio/ji2.wav',
+            options: ['记', '鉴'],
+            correct: '记'
+        },
+        {
+            id: 100,
+            name: "样本100",
+            audio: 'audio/ji2.wav',
+            options: ['记', '见'],
+            correct: '记'
+        },
+        {
+            id: 101,
+            name: "样本101",
+            audio: 'audio/ji2.wav',
+            options: ['记', '毽'],
+            correct: '记'
+        },
+        {
+            id: 102,
+            name: "样本102",
+            audio: 'audio/ji2.wav',
+            options: ['记', '简'],
+            correct: '记'
+        },
+        {
+            id: 103,
+            name: "样本103",
+            audio: 'audio/ji2.wav',
+            options: ['记', '剪'],
+            correct: '记'
+        },
+        {
+            id: 104,
+            name: "样本104",
+            audio: 'audio/ji2.wav',
+            options: ['记', '检'],
+            correct: '记'
+        },
+        {
+            id: 105,
+            name: "样本105",
+            audio: 'audio/ji2.wav',
+            options: ['记', '茧'],
+            correct: '记'
+        },
+        {
+            id: 106,
+            name: "样本106",
+            audio: 'audio/je2.wav',
+            options: ['记', '箭'],
+            correct: '箭'
+        },
+        {
+            id: 107,
+            name: "样本107",
+            audio: 'audio/je2.wav',
+            options: ['记', '建'],
+            correct: '建'
+        },
+        {
+            id: 108,
+            name: "样本108",
+            audio: 'audio/je2.wav',
+            options: ['记', '荐'],
+            correct: '荐'
+        },
+        {
+            id: 109,
+            name: "样本109",
+            audio: 'audio/je2.wav',
+            options: ['记', '剑'],
+            correct: '剑'
+        },
+        {
+            id: 110,
+            name: "样本110",
+            audio: 'audio/je2.wav',
+            options: ['记', '鉴'],
+            correct: '鉴'
+        },
+        {
+            id: 111,
+            name: "样本111",
+            audio: 'audio/je2.wav',
+            options: ['记', '见'],
+            correct: '见'
+        },
+        {
+            id: 112,
+            name: "样本112",
+            audio: 'audio/je2.wav',
+            options: ['记', '毽'],
+            correct: '毽'
+        },
+        {
+            id: 113,
+            name: "样本113",
+            audio: 'audio/je2.wav',
+            options: ['记', '简'],
+            correct: '简'
+        },
+        {
+            id: 114,
+            name: "样本114",
+            audio: 'audio/je2.wav',
+            options: ['记', '剪'],
+            correct: '剪'
+        },
+        {
+            id: 115,
+            name: "样本115",
+            audio: 'audio/je2.wav',
+            options: ['记', '检'],
+            correct: '检'
+        },
+        {
+            id: 116,
+            name: "样本116",
+            audio: 'audio/je2.wav',
+            options: ['记', '茧'],
+            correct: '茧'
+        },
+        {
+            id: 117,
+            name: "样本117",
+            audio: 'audio/jhi.wav',
+            options: ['技', '件'],
+            correct: '技'
+        },
+        {
+            id: 118,
+            name: "样本118",
+            audio: 'audio/jhi.wav',
+            options: ['技', '健'],
+            correct: '技'
+        },
+        {
+            id: 119,
+            name: "样本119",
+            audio: 'audio/jhi.wav',
+            options: ['技', '钳'],
+            correct: '技'
+        },
+        {
+            id: 120,
+            name: "样本120",
+            audio: 'audio/jhe.wav',
+            options: ['技', '件'],
+            correct: '件'
+        },
+        {
+            id: 121,
+            name: "样本121",
+            audio: 'audio/jhe.wav',
+            options: ['技', '健'],
+            correct: '健'
+        },
+        {
+            id: 122,
+            name: "样本122",
+            audio: 'audio/jhe.wav',
+            options: ['技', '钳'],
+            correct: '钳'
+        },
+        {
+            id: 123,
+            name: "样本123",
+            audio: 'audio/qi1.wav',
+            options: ['欺', '千'],
+            correct: '欺'
+        },
+        {
+            id: 124,
+            name: "样本124",
+            audio: 'audio/qi1.wav',
+            options: ['欺', '牵'],
+            correct: '欺'
+        },
+        {
+            id: 125,
+            name: "样本125",
+            audio: 'audio/qi1.wav',
+            options: ['欺', '签'],
+            correct: '欺'
+        },
+        {
+            id: 126,
+            name: "样本126",
+            audio: 'audio/qi1.wav',
+            options: ['欺', '谦'],
+            correct: '欺'
+        },
+        {
+            id: 127,
+            name: "样本127",
+            audio: 'audio/qi1.wav',
+            options: ['欺', '迁'],
+            correct: '欺'
+        },
+        {
+            id: 128,
+            name: "样本128",
+            audio: 'audio/qe1.wav',
+            options: ['欺', '千'],
+            correct: '千'
+        },
+        {
+            id: 129,
+            name: "样本129",
+            audio: 'audio/qe1.wav',
+            options: ['欺', '牵'],
+            correct: '牵'
+        },
+        {
+            id: 130,
+            name: "样本130",
+            audio: 'audio/qe1.wav',
+            options: ['欺', '签'],
+            correct: '签'
+        },
+        {
+            id: 131,
+            name: "样本131",
+            audio: 'audio/qe1.wav',
+            options: ['欺', '谦'],
+            correct: '谦'
+        },
+        {
+            id: 132,
+            name: "样本132",
+            audio: 'audio/qe1.wav',
+            options: ['欺', '迁'],
+            correct: '迁'
+        },
+        {
+            id: 133,
+            name: "样本133",
+            audio: 'audio/qi2.wav',
+            options: ['气', '欠'],
+            correct: '气'
+        },
+        {
+            id: 134,
+            name: "样本134",
+            audio: 'audio/qi2.wav',
+            options: ['气', '歉'],
+            correct: '气'
+        },
+        {
+            id: 135,
+            name: "样本135",
+            audio: 'audio/qi2.wav',
+            options: ['气', '浅'],
+            correct: '气'
+        },
+        {
+            id: 136,
+            name: "样本136",
+            audio: 'audio/qe2.wav',
+            options: ['气', '欠'],
+            correct: '欠'
+        },
+        {
+            id: 137,
+            name: "样本137",
+            audio: 'audio/qe2.wav',
+            options: ['气', '歉'],
+            correct: '歉'
+        },
+        {
+            id: 138,
+            name: "样本138",
+            audio: 'audio/qe2.wav',
+            options: ['气', '浅'],
+            correct: '浅'
+        },
+        {
+            id: 139,
+            name: "样本139",
+            audio: 'audio/xhi.wav',
+            options: ['齐', '前'],
+            correct: '齐'
+        },
+        {
+            id: 140,
+            name: "样本140",
+            audio: 'audio/xhi.wav',
+            options: ['齐', '潜'],
+            correct: '齐'
+        },
+        {
+            id: 141,
+            name: "样本141",
+            audio: 'audio/xhe.wav',
+            options: ['齐', '前'],
+            correct: '前'
+        },
+        {
+            id: 142,
+            name: "样本142",
+            audio: 'audio/xhe.wav',
+            options: ['齐', '潜'],
+            correct: '潜'
+        },
+        {
+            id: 143,
+            name: "样本143",
+            audio: 'audio/xi1.wav',
+            options: ['希', '先'],
+            correct: '希'
+        },
+        {
+            id: 144,
+            name: "样本144",
+            audio: 'audio/xi1.wav',
+            options: ['希', '仙'],
+            correct: '希'
+        },
+        {
+            id: 145,
+            name: "样本145",
+            audio: 'audio/xi1.wav',
+            options: ['希', '鲜'],
+            correct: '希'
+        },
+        {
+            id: 146,
+            name: "样本146",
+            audio: 'audio/xe1.wav',
+            options: ['希', '先'],
+            correct: '先'
+        },
+        {
+            id: 147,
+            name: "样本147",
+            audio: 'audio/xe1.wav',
+            options: ['希', '仙'],
+            correct: '仙'
+        },
+        {
+            id: 148,
+            name: "样本148",
+            audio: 'audio/xe1.wav',
+            options: ['希', '鲜'],
+            correct: '鲜'
+        },
+        {
+            id: 149,
+            name: "样本149",
+            audio: 'audio/xi2.wav',
+            options: ['喜', '险'],
+            correct: '喜'
+        },
+        {
+            id: 150,
+            name: "样本150",
+            audio: 'audio/xi2.wav',
+            options: ['喜', '显'],
+            correct: '喜'
+        },
+        {
+            id: 151,
+            name: "样本151",
+            audio: 'audio/xi2.wav',
+            options: ['喜', '线'],
+            correct: '喜'
+        },
+        {
+            id: 152,
+            name: "样本152",
+            audio: 'audio/xi2.wav',
+            options: ['喜', '献'],
+            correct: '喜'
+        },
+        {
+            id: 153,
+            name: "样本153",
+            audio: 'audio/xe2.wav',
+            options: ['喜', '险'],
+            correct: '险'
+        },
+        {
+            id: 154,
+            name: "样本154",
+            audio: 'audio/xe2.wav',
+            options: ['喜', '显'],
+            correct: '显'
+        },
+        {
+            id: 155,
+            name: "样本155",
+            audio: 'audio/xe2.wav',
+            options: ['喜', '线'],
+            correct: '线'
+        },
+        {
+            id: 156,
+            name: "样本156",
+            audio: 'audio/xe2.wav',
+            options: ['喜', '献'],
+            correct: '献'
+        },
+        {
+            id: 157,
+            name: "样本157",
+            audio: 'audio/yhi.wav',
+            options: ['移', '盐'],
+            correct: '移'
+        },
+        {
+            id: 158,
+            name: "样本158",
+            audio: 'audio/yhi.wav',
+            options: ['移', '沿'],
+            correct: '移'
+        },
+        {
+            id: 159,
+            name: "样本159",
+            audio: 'audio/yhi.wav',
+            options: ['移', '炎'],
+            correct: '移'
+        },
+        {
+            id: 160,
+            name: "样本160",
+            audio: 'audio/yhi.wav',
+            options: ['移', '檐'],
+            correct: '移'
+        },
+        {
+            id: 161,
+            name: "样本161",
+            audio: 'audio/yhi.wav',
+            options: ['移', '焰'],
+            correct: '移'
+        },
+        {
+            id: 162,
+            name: "样本162",
+            audio: 'audio/yhi.wav',
+            options: ['移', '贤'],
+            correct: '移'
+        },
+        {
+            id: 163,
+            name: "样本163",
+            audio: 'audio/yhi.wav',
+            options: ['移', '嫌'],
+            correct: '移'
+        },
+        {
+            id: 164,
+            name: "样本164",
+            audio: 'audio/yhi.wav',
+            options: ['移', '现'],
+            correct: '移'
+        },
+        {
+            id: 165,
+            name: "样本165",
+            audio: 'audio/yhe.wav',
+            options: ['移', '盐'],
+            correct: '盐'
+        },
+        {
+            id: 166,
+            name: "样本166",
+            audio: 'audio/yhe.wav',
+            options: ['移', '沿'],
+            correct: '沿'
+        },
+        {
+            id: 167,
+            name: "样本167",
+            audio: 'audio/yhe.wav',
+            options: ['移', '炎'],
+            correct: '炎'
+        },
+        {
+            id: 168,
+            name: "样本168",
+            audio: 'audio/yhe.wav',
+            options: ['移', '檐'],
+            correct: '檐'
+        },
+        {
+            id: 169,
+            name: "样本169",
+            audio: 'audio/yhe.wav',
+            options: ['移', '焰'],
+            correct: '焰'
+        },
+        {
+            id: 170,
+            name: "样本170",
+            audio: 'audio/yhe.wav',
+            options: ['移', '贤'],
+            correct: '贤'
+        },
+        {
+            id: 171,
+            name: "样本171",
+            audio: 'audio/yhe.wav',
+            options: ['移', '嫌'],
+            correct: '嫌'
+        },
+        {
+            id: 172,
+            name: "样本172",
+            audio: 'audio/yhe.wav',
+            options: ['移', '现'],
+            correct: '现'
+        },
+        {
+            id: 173,
+            name: "样本173",
+            audio: 'audio/yi1.wav',
+            options: ['衣', '腌'],
+            correct: '衣'
+        },
+        {
+            id: 174,
+            name: "样本174",
+            audio: 'audio/yi1.wav',
+            options: ['衣', '烟'],
+            correct: '衣'
+        },
+        {
+            id: 175,
+            name: "样本175",
+            audio: 'audio/yi1.wav',
+            options: ['衣', '胭'],
+            correct: '衣'
+        },
+        {
+            id: 176,
+            name: "样本176",
+            audio: 'audio/ye1.wav',
+            options: ['衣', '腌'],
+            correct: '腌'
+        },
+        {
+            id: 177,
+            name: "样本177",
+            audio: 'audio/ye1.wav',
+            options: ['衣', '烟'],
+            correct: '烟'
+        },
+        {
+            id: 178,
+            name: "样本178",
+            audio: 'audio/ye1.wav',
+            options: ['衣', '胭'],
+            correct: '胭'
+        },
+        {
+            id: 179,
+            name: "样本179",
+            audio: 'audio/yi2.wav',
+            options: ['意', '燕'],
+            correct: '意'
+        },
+        {
+            id: 180,
+            name: "样本180",
+            audio: 'audio/yi2.wav',
+            options: ['意', '厌'],
+            correct: '意'
+        },
+        {
+            id: 181,
+            name: "样本181",
+            audio: 'audio/yi2.wav',
+            options: ['意', '雁'],
+            correct: '意'
+        },
+        {
+            id: 182,
+            name: "样本182",
+            audio: 'audio/yi2.wav',
+            options: ['意', '演'],
+            correct: '意'
+        },
+        {
+            id: 183,
+            name: "样本183",
+            audio: 'audio/ye2.wav',
+            options: ['意', '燕'],
+            correct: '燕'
+        },
+        {
+            id: 184,
+            name: "样本184",
+            audio: 'audio/ye2.wav',
+            options: ['意', '厌'],
+            correct: '厌'
+        },
+        {
+            id: 185,
+            name: "样本185",
+            audio: 'audio/ye2.wav',
+            options: ['意', '雁'],
+            correct: '雁'
+        },
+        {
+            id: 186,
+            name: "样本186",
+            audio: 'audio/ye2.wav',
+            options: ['意', '演'],
+            correct: '演'
+        }
+    ]
+};
+
+
+
+    // 生成 558 道题目
+    let allTrials = [];
+    for (let i = 0; i < 3; i++) {
+    allTrials = allTrials.concat(experimentData.stimuli);
+    }
+
+    // 随机打乱顺序
+    allTrials.sort(() => Math.random() - 0.5);
+
+    let currentTrialIndex = 0;
+    let participantId = '';
+
+    // 获取DOM元素
+    const welcomePage = document.getElementById('welcome-page');
+    const experimentPage = document.getElementById('experiment-page');
+    const breakPage = document.getElementById('break-page');
+    const completionPage = document.getElementById('completion-page');
+    const trialCount = document.getElementById('trial-count');
+    const playAudioBtn = document.getElementById('play-audio');
+    const audioLoading = document.getElementById('audio-loading');
+    const voiceAudio = document.getElementById('voice-audio');
+    const responseSection = document.getElementById('response-section');
+    const responseOptions = document.getElementById('response-options');
+    const continueBtn = document.getElementById('continue-btn');
+    const pauseBtn = document.getElementById('pause-btn');
+    const exportBtn = document.getElementById('export-btn');
+    const restartBtn = document.getElementById('restart-btn');
+
+    // 开始实验
+    document.getElementById('start-btn').addEventListener('click', () => {
+    participantId = document.getElementById('participant-id').value;
+    if (config.idValidation.test(participantId)) {
+        welcomePage.classList.add('hidden');
+        experimentPage.classList.remove('hidden');
+        showTrial();
+    } else {
+        alert('请输入有效的实验编号！');
+    }
+    });
+
+    // 显示题目
+    function showTrial() {
+    if (currentTrialIndex >= allTrials.length) {
+        experimentPage.classList.add('hidden');
+        completionPage.classList.remove('hidden');
+        if (config.autoSubmit) submitData();
+        return;
+    }
+
+    const trial = allTrials[currentTrialIndex];
+    trialCount.textContent = `${currentTrialIndex + 1}/${allTrials.length}`;
+    voiceAudio.src = trial.audio;
+    responseSection.classList.add('hidden');
+    responseOptions.innerHTML = '';
+
+    trial.options.forEach(option => {
+        const button = document.createElement('button');
+        button.classList.add('bg-gray-200', 'hover:bg-gray-300', 'text-gray-800', 'font-medium', 'py-2', 'px-4', 'rounded-lg', 'transition-colors');
+        button.textContent = option;
+        button.addEventListener('click', () => {
+        const isCorrect = option === trial.correct;
+        experimentResults.push({
+            participantId,
+            trial: currentTrialIndex + 1,
+            stimulusId: trial.id,
+            stimulusName: trial.name,
+            selectedOption: option,
+            correctOption: trial.correct,
+            isCorrect
+        });
+
+        currentTrialIndex++;
+        showTrial();
+        });
+        responseOptions.appendChild(button);
+    });
+    }
+
+    // 播放音频
+    playAudioBtn.addEventListener('click', () => {
+    audioLoading.classList.remove('hidden');
+    voiceAudio.load();
+    voiceAudio.addEventListener('canplaythrough', () => {
+        audioLoading.classList.add('hidden');
+        voiceAudio.play();
+        responseSection.classList.remove('hidden');
+    });
+    
+    // 添加音频加载失败处理
+    voiceAudio.addEventListener('error', () => {
+        audioLoading.classList.add('hidden');
+        alert('音频加载失败，请检查文件路径或网络连接。');
+    });
+    });
+
+    // 提交数据
+    function submitData() {
+    if (!experimentResults.length) return;
+    
+    fetch(config.submitApi, {
+        method: 'POST',
+        headers: {
+        'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+        participantId,
+        results: experimentResults
+        })
+    })
+    .then(response => response.json())
+    .then(data => console.log('数据提交成功:', data))
+    .catch(error => console.error('数据提交失败:', error));
+    }
+
+    // 下载数据
+    exportBtn.addEventListener('click', () => {
+    if (!experimentResults.length) {
+        alert('没有可导出的数据！');
+        return;
+    }
+    
+    const csvContent = "被试编号,题目序号,题目ID,题目名称,用户选择,正确答案,是否正确\n" +
+        experimentResults.map(result => `${result.participantId},${result.trial},${result.stimulusId},${result.stimulusName},${result.selectedOption},${result.correctOption},${result.isCorrect ? '正确' : '错误'}`).join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `实验结果_${participantId}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    });
+
+    // 重新实验
+    restartBtn.addEventListener('click', () => {
+    completionPage.classList.add('hidden');
+    welcomePage.classList.remove('hidden');
+    currentTrialIndex = 0;
+    experimentResults.length = 0;
+    document.getElementById('participant-id').value = '';
+    });
+    
+  </script>
+</html>
+
